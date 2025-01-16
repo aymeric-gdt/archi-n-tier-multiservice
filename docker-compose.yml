@@ -1,0 +1,101 @@
+services:
+  db:
+    image: mongo
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+    networks:
+      - backend-db
+    volumes:
+      - mongodb_data:/data/db
+    restart: unless-stopped
+
+  user-backend:
+    image: node:18
+    volumes:
+      - ./backend/user-backend:/app
+    working_dir: /app
+    command: npm start
+    depends_on:
+      - db
+    networks:
+      - backend-db
+      - gateway-backend
+    environment:
+      - MONGO_URI=mongodb://root:example@db:27017
+      - NODE_ENV=development
+      - JWT_SECRET=your_jwt_secret_key_here
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  product-backend:
+    image: node:18
+    volumes:
+      - ./backend/product-backend:/app
+    working_dir: /app
+    command: npm start
+    depends_on:
+      - db
+      - redis
+    networks:
+      - backend-db
+      - gateway-backend
+    environment:
+      - MONGO_URI=mongodb://root:example@db:27017
+      - NODE_ENV=development
+      - JWT_SECRET=your_jwt_secret_key_here
+      - REDIS_URL=redis://redis:6379
+    restart: unless-stopped
+
+  frontend:
+    image: node:18
+    volumes:
+      - ./frontend:/app
+    working_dir: /app
+    command: npm start
+    ports:
+      - "3000:3000"
+    depends_on:
+      - product-backend
+      - user-backend
+    networks:
+      - frontend-gateway
+    environment:
+      - WDS_SOCKET_PORT=0
+    restart: unless-stopped
+
+  gateway-backend:
+    image: node:18
+    volumes:
+      - ./backend/gateway-backend:/app
+    working_dir: /app
+    command: npm start
+    ports:
+      - "8082:8082"
+    depends_on:
+      - product-backend
+      - user-backend
+    networks:
+      - frontend-gateway
+      - gateway-backend
+    restart: unless-stopped
+
+  redis:
+    image: redis:alpine
+    networks:
+      - backend-db
+    restart: unless-stopped
+
+networks:
+  backend-db:
+  gateway-backend:
+  frontend-gateway:
+
+volumes:
+  mongodb_data:
